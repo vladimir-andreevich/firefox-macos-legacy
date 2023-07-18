@@ -1,0 +1,81 @@
+From 891c1dea2d68241aeefc5fc71d0091fe0942fcf1 Mon Sep 17 00:00:00 2001
+From: Volodymyr Halchenko
+ <62695478+vladimir-andreevich@users.noreply.github.com>
+Date: Tue, 18 Jul 2023 14:45:32 +0200
+Subject: [PATCH] Enable Firefox bootstrap on macOS Mojave
+
+---
+ python/mozboot/mozboot/osx.py | 48 +++++++++++++++++++++++++++++++----
+ 1 file changed, 43 insertions(+), 5 deletions(-)
+
+diff --git a/python/mozboot/mozboot/osx.py b/python/mozboot/mozboot/osx.py
+index 8cd180f4ab08b..f8f2631bf5799 100644
+--- a/python/mozboot/mozboot/osx.py
++++ b/python/mozboot/mozboot/osx.py
+@@ -6,6 +6,7 @@ import platform
+ import subprocess
+ import sys
+ import tempfile
++import traceback
+ from urllib.request import urlopen
+ 
+ import certifi
+@@ -222,13 +223,50 @@ class OSXBootstrapper(OSXAndroidBootstrapper, BaseBootstrapper):
+ 
+         to_install = set(package for package in packages if package not in installed)
+         to_upgrade = set(package for package in packages if package in outdated)
+-
++        
+         if to_install or to_upgrade:
+             print(BREW_PACKAGES)
+-        if to_install:
+-            subprocess.check_call(create_homebrew_cmd("install") + list(to_install))
+-        if to_upgrade:
+-            subprocess.check_call(create_homebrew_cmd("upgrade") + list(to_upgrade))
++        if self.os_version < Version("10.15"): # macOS Mojave
++            ''' Note that LLVM must be installed first. Otherwise, the system attempts to install
++            the latest version of LLVM compiler infrastructure which does not build. '''
++            subprocess.check_call(create_homebrew_cmd("install") + ["llvm@11"])
++            exclude_recent_versions = ["llvm"] # the list will grow with time
++            for dependency in exclude_recent_versions:
++                if dependency in to_install:
++                    to_install.remove(dependency)
++                if dependency in to_upgrade:
++                    to_upgrade.remove(dependency)
++
++            ''' Hardcoded for a very problematic package in terms of its management using Homebrew. 
++            Just ignore it, it is not mandatory to have it installed as of July 2023. '''
++            if "watchman" in to_install:
++                to_install.remove("watchman")
++            if "watchman" in to_upgrade:
++                to_upgrade.remove("watchman")
++
++            if to_install:
++                for dependency in to_install:
++                    try:
++                        subprocess.check_call(create_homebrew_cmd("install") + list(to_install) \
++                                              + ["--ignore-dependencies"] + exclude_recent_versions)
++                    except:
++                        print("It seems there is a problem with Firefox dependencies. You need to change " +
++                              "the procedure on how Homebrew packages are installed on macOS Mojave.")
++                        traceback.print_exc()
++            if to_upgrade:
++                for dependency in to_upgrade:
++                    try:
++                        subprocess.check_call(create_homebrew_cmd("upgrade") + list(dependency) \
++                                          + ["--ignore-dependencies"] + exclude_recent_versions)
++                    except:
++                        print("It seems there is a problem with Firefox dependencies. You need to change " +
++                              "the procedure on how Homebrew packages are installed on macOS Mojave.")
++                        traceback.print_exc()
++        else:
++            if to_install:
++                subprocess.check_call(create_homebrew_cmd("install") + list(to_install))
++            if to_upgrade:
++                subprocess.check_call(create_homebrew_cmd("upgrade") + list(to_upgrade))
+ 
+     def _ensure_homebrew_casks(self, casks):
+         self._ensure_homebrew_found()
+-- 
+2.41.0
+

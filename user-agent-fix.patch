@@ -1,0 +1,138 @@
+From bdaee7bfd8bc4113533a7094e9dbdd8fb87048b0 Mon Sep 17 00:00:00 2001
+From: Volodymyr Halchenko
+ <62695478+vladimir-andreevich@users.noreply.github.com>
+Date: Tue, 18 Jul 2023 14:55:24 +0200
+Subject: [PATCH] Fix user agent
+
+---
+ browser/app/macbuild/Contents/Info.plist.in   |  2 +-
+ .../test/browser/browser_navigator.js         | 19 ++++++++++++++++---
+ .../test/browser/browser_navigator_iframes.js | 19 ++++++++++++++++---
+ netwerk/protocol/http/nsHttpHandler.cpp       | 10 +++++++++-
+ 4 files changed, 42 insertions(+), 8 deletions(-)
+
+diff --git a/browser/app/macbuild/Contents/Info.plist.in b/browser/app/macbuild/Contents/Info.plist.in
+index 0964bd5758638..2422ea8f873f8 100644
+--- a/browser/app/macbuild/Contents/Info.plist.in
++++ b/browser/app/macbuild/Contents/Info.plist.in
+@@ -253,7 +253,7 @@
+ 	<key>LSFileQuarantineEnabled</key>
+ 	<true/>
+ 	<key>LSMinimumSystemVersion</key>
+-	<string>10.15.0</string>
++	<string>10.13.0</string>
+   <key>NSSupportsAutomaticGraphicsSwitching</key>
+   <true/>
+   <key>NSRequiresAquaSystemAppearance</key>
+diff --git a/browser/components/resistfingerprinting/test/browser/browser_navigator.js b/browser/components/resistfingerprinting/test/browser/browser_navigator.js
+index 934f84b69e7d1..478a1ebd6a1b2 100644
+--- a/browser/components/resistfingerprinting/test/browser/browser_navigator.js
++++ b/browser/components/resistfingerprinting/test/browser/browser_navigator.js
+@@ -14,7 +14,18 @@ ChromeUtils.defineESModuleGetters(this, {
+ 
+ let expectedResults;
+ 
+-const osVersion = Services.sysinfo.get("version");
++let osVersion = Services.sysinfo.get("version");
++if (AppConstants.platform == "macosx") {
++  // Convert Darwin version to macOS version: 19.x.x -> 10.15 etc.
++  // https://en.wikipedia.org/wiki/Darwin_%28operating_system%29
++  let DarwinVersionParts = osVersion.split(".");
++  let DarwinMajorVersion = +DarwinVersionParts[0];
++  let macOsMinorVersion = DarwinMajorVersion - 4;
++  if (macOsMinorVersion > 15) {
++    macOsMinorVersion = 15;
++  }
++  osVersion = `10.${macOsMinorVersion}`;
++}
+ 
+ const DEFAULT_APPVERSION = {
+   linux: "5.0 (X11)",
+@@ -72,7 +83,8 @@ const WindowsOscpuPromise = (async () => {
+ 
+ const DEFAULT_OSCPU = {
+   linux: `Linux ${cpuArch}`,
+-  macosx: "Intel Mac OS X 10.15",
++  win: WindowsOscpu,
++  macosx: `Intel Mac OS X ${osVersion}`,
+   android: `Linux ${cpuArch}`,
+   other: `Linux ${cpuArch}`,
+ };
+@@ -87,7 +99,8 @@ const SPOOFED_OSCPU = {
+ 
+ const DEFAULT_UA_OS = {
+   linux: `X11; Linux ${cpuArch}`,
+-  macosx: "Macintosh; Intel Mac OS X 10.15",
++  win: WindowsOscpu,
++  macosx: `Macintosh; Intel Mac OS X ${osVersion}`,
+   android: `Android ${osVersion}; Mobile`,
+   other: `X11; Linux ${cpuArch}`,
+ };
+diff --git a/browser/components/resistfingerprinting/test/browser/browser_navigator_iframes.js b/browser/components/resistfingerprinting/test/browser/browser_navigator_iframes.js
+index eac4f1e2cb67c..3b1caebf6c109 100644
+--- a/browser/components/resistfingerprinting/test/browser/browser_navigator_iframes.js
++++ b/browser/components/resistfingerprinting/test/browser/browser_navigator_iframes.js
+@@ -29,7 +29,18 @@ ChromeUtils.defineESModuleGetters(this, {
+     "resource://gre/modules/components-utils/WindowsVersionInfo.sys.mjs",
+ });
+ 
+-const osVersion = Services.sysinfo.get("version");
++let osVersion = Services.sysinfo.get("version");
++if (AppConstants.platform == "macosx") {
++  // Convert Darwin version to macOS version: 19.x.x -> 10.15 etc.
++  // https://en.wikipedia.org/wiki/Darwin_%28operating_system%29
++  let DarwinVersionParts = osVersion.split(".");
++  let DarwinMajorVersion = +DarwinVersionParts[0];
++  let macOsMinorVersion = DarwinMajorVersion - 4;
++  if (macOsMinorVersion > 15) {
++    macOsMinorVersion = 15;
++  }
++  osVersion = `10.${macOsMinorVersion}`;
++}
+ 
+ const DEFAULT_APPVERSION = {
+   linux: "5.0 (X11)",
+@@ -87,7 +98,8 @@ const WindowsOscpuPromise = (async () => {
+ 
+ const DEFAULT_OSCPU = {
+   linux: `Linux ${cpuArch}`,
+-  macosx: "Intel Mac OS X 10.15",
++  win: WindowsOscpu,
++  macosx: `Intel Mac OS X ${osVersion}`,
+   android: `Linux ${cpuArch}`,
+   other: `Linux ${cpuArch}`,
+ };
+@@ -102,7 +114,8 @@ const SPOOFED_OSCPU = {
+ 
+ const DEFAULT_UA_OS = {
+   linux: `X11; Linux ${cpuArch}`,
+-  macosx: "Macintosh; Intel Mac OS X 10.15",
++  win: WindowsOscpu,
++  macosx: `Macintosh; Intel Mac OS X ${osVersion}`,
+   android: `Android ${osVersion}; Mobile`,
+   other: `X11; Linux ${cpuArch}`,
+ };
+diff --git a/netwerk/protocol/http/nsHttpHandler.cpp b/netwerk/protocol/http/nsHttpHandler.cpp
+index adc7a0a6765fc..43ec07696d168 100644
+--- a/netwerk/protocol/http/nsHttpHandler.cpp
++++ b/netwerk/protocol/http/nsHttpHandler.cpp
+@@ -914,7 +914,15 @@ void nsHttpHandler::InitUserAgentComponents() {
+ #  endif
+ 
+ #elif defined(XP_MACOSX)
+-  mOscpu.AssignLiteral("Intel Mac OS X 10.15");
++  SInt32 majorVersion = nsCocoaFeatures::macOSVersionMajor();
++  SInt32 minorVersion = nsCocoaFeatures::macOSVersionMinor();
++
++  // Cap the reported macOS version at 10.15 (like Safari) to avoid breaking
++  // sites that assume the UA's macOS version always begins with "10.".
++  int uaVersion = (majorVersion >= 11 || minorVersion > 15) ? 15 : minorVersion;
++
++  // Always return an "Intel" UA string, even on ARM64 macOS like Safari does.
++  mOscpu = nsPrintfCString("Intel Mac OS X 10.%d", uaVersion);
+ #elif defined(XP_UNIX)
+   struct utsname name {};
+   int ret = uname(&name);
+-- 
+2.41.0
+
